@@ -3,9 +3,14 @@ body { margin: 0; }
 main { max-width: 34rem; margin: auto; padding: 1.5rem; }
 h1 { font-size: 1.6rem; }
 p { line-height: 1.6; overflow-wrap: anywhere; }
-label, input, button { display: block; box-sizing: border-box; width: 100%; }
-input, button { font: inherit; padding: .85rem; margin-top: .6rem; border-radius: .5rem; }
-input { border: 1px solid #64748b; }
+label, input, textarea, button { display: block; box-sizing: border-box; width: 100%; }
+input, textarea, button { font: inherit; padding: .85rem; margin-top: .6rem; border-radius: .5rem; }
+input, textarea { border: 1px solid #64748b; }
+textarea { resize: vertical; }
+section { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #cbd5e1; }
+section label { margin-top: 1rem; }
+.storage-actions { display: flex; flex-wrap: wrap; gap: .6rem; }
+.storage-actions button { flex: 1 1 5rem; }
 button { background: #164e8d; color: white; border: 0; margin-top: 1.2rem; }
 button:disabled { opacity: .55; }
-button:focus-visible, input:focus-visible { outline: 3px solid #d06b00; outline-offset: 3px; }
+button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px solid #d06b00; outline-offset: 3px; }

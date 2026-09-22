@@ -38,7 +38,14 @@ export function createSsaClient(transport, lifecycle = globalThis, timeoutMs = 5
       }, timeoutMs);
       pending.set(id, { resolve, reject, timer });
       try {
-        transport.postMessage(JSON.stringify({ version: 1, id, method, params }));
+        const message = JSON.stringify({ version: 1, id, method, params });
+        if (message.length > 8192) {
+          clearTimeout(timer);
+          pending.delete(id);
+          reject(new SsaError('PAYLOAD_TOO_LARGE', 'Native requests must be at most 8192 characters.'));
+          return;
+        }
+        transport.postMessage(message);
       } catch {
         clearTimeout(timer);
         pending.delete(id);
@@ -63,6 +70,11 @@ export function createSsaClient(transport, lifecycle = globalThis, timeoutMs = 5
   return Object.freeze({
     capabilities: () => call('bridge.capabilities'),
     vibrate: (params = { durationMs: 100 }) => call('device.vibrate', params),
+    storage: Object.freeze({
+      get: (params) => call('storage.get', params),
+      set: (params) => call('storage.set', params),
+      remove: (params) => call('storage.remove', params),
+    }),
     dispose,
   });
 }
