@@ -5,8 +5,9 @@ import './style.css';
 
 function App() {
   const [ready, setReady] = useState(false);
+  const [canReportReady, setCanReportReady] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [durationMs, setDurationMs] = useState(100);
+  const [hapticType, setHapticType] = useState('medium');
   const [status, setStatus] = useState('Connecting to SSA…');
   const [storageReady, setStorageReady] = useState(false);
   const [storageKey, setStorageKey] = useState('demo.note');
@@ -17,26 +18,34 @@ function App() {
     let active = true;
     ssa.capabilities().then(({ methods }) => {
       if (!active) return;
-      const supported = methods.includes('device.vibrate');
+      const supported = methods.includes('device.haptic');
       setReady(supported);
-      setStatus(supported ? 'Native bridge ready' : 'This app version does not support vibration.');
+      setStatus(supported ? 'Native bridge ready' : 'This app version does not support semantic haptics.');
       const supportsStorage = ['storage.get', 'storage.set', 'storage.remove'].every((method) => methods.includes(method));
       setStorageReady(supportsStorage);
       setStorageStatus(supportsStorage ? 'Native storage ready' : 'Install the updated SSA app to enable storage.');
+      setCanReportReady(methods.includes('bridge.ready'));
     }).catch((error) => {
       if (active) {
         setStatus(`${error.code}: ${error.message}`);
-        setStorageStatus('Open this page in the SSA Android Bridge tab to use native storage.');
+        setStorageStatus('Open this page in the SSA Bridge tab to use native storage.');
       }
     });
     return () => { active = false; };
   }, []);
 
-  async function vibrate() {
+  useEffect(() => {
+    if (!canReportReady) return;
+    // Runs after React commits the handshake result. This is not a paint guarantee.
+    // Avoid animation-frame timers: background WebViews can throttle them.
+    ssa.ready().catch((error) => console.warn('SSA readiness acknowledgement failed', error.code));
+  }, [canReportReady]);
+
+  async function triggerHaptic() {
     setBusy(true);
     try {
-      await ssa.vibrate({ durationMs });
-      setStatus('Vibration request accepted by Android.');
+      await ssa.haptics.trigger({ type: hapticType });
+      setStatus(`${hapticType} haptic request accepted by the device.`);
     } catch (error) {
       setStatus(`${error.code}: ${error.message}`);
     } finally {
@@ -68,12 +77,15 @@ function App() {
 
   return <main>
     <h1>SSA Native Bridge</h1>
-    <p>This React page requests vibration through Flutter. It does not use the browser Vibration API.</p>
-    <label htmlFor="duration">Duration in milliseconds</label>
-    <input id="duration" type="number" min="1" max="1000" step="1" value={durationMs}
-      onChange={(event) => setDurationMs(Number(event.target.value))} />
-    <button id="ssa-vibrate" disabled={!ready || busy} onClick={vibrate}>
-      {busy ? 'Requesting…' : 'Vibrate device'}
+    <p>This React page requests semantic haptic feedback through Flutter. It does not use a browser vibration API.</p>
+    <label htmlFor="haptic-type">Haptic type</label>
+    <select id="haptic-type" value={hapticType} disabled={busy}
+      onChange={(event) => setHapticType(event.target.value)}>
+      {['light', 'medium', 'heavy', 'selectionClick', 'success', 'warning', 'error', 'vibrate']
+        .map((type) => <option key={type} value={type}>{type}</option>)}
+    </select>
+    <button id="ssa-vibrate" disabled={!ready || busy} onClick={triggerHaptic}>
+      {busy ? 'Requesting…' : 'Trigger haptic'}
     </button>
     <p role="status" aria-live="polite">{status}</p>
     <section aria-labelledby="storage-heading">

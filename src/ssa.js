@@ -29,7 +29,7 @@ export function createSsaClient(transport, lifecycle = globalThis, timeoutMs = 5
 
   function call(method, params = {}) {
     if (disposed) return Promise.reject(new SsaError('DISPOSED', 'The bridge client has closed.'));
-    if (!transport) return Promise.reject(new SsaError('BRIDGE_UNAVAILABLE', 'Open this page in the SSA Android Bridge tab.'));
+    if (!transport) return Promise.reject(new SsaError('BRIDGE_UNAVAILABLE', 'Open this page in the SSA Bridge tab.'));
     const id = String(++sequence);
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -69,6 +69,11 @@ export function createSsaClient(transport, lifecycle = globalThis, timeoutMs = 5
 
   return Object.freeze({
     capabilities: () => call('bridge.capabilities'),
+    ready: () => call('bridge.ready'),
+    haptics: Object.freeze({
+      trigger: (params) => call('device.haptic', params),
+    }),
+    // Deprecated compatibility API for pages deployed before semantic haptics.
     vibrate: (params = { durationMs: 100 }) => call('device.vibrate', params),
     storage: Object.freeze({
       get: (params) => call('storage.get', params),
@@ -79,5 +84,6 @@ export function createSsaClient(transport, lifecycle = globalThis, timeoutMs = 5
   });
 }
 
+console.log('globalthis.ssanative isbeing called');
 // The scoped WebMessageListener is registered before the page is loaded.
 export const ssa = createSsaClient(globalThis.SsaNative);
