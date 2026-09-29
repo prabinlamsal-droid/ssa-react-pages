@@ -117,7 +117,7 @@ accept at most 4096 JSON-encoded UTF-8 bytes. Arbitrary web keys, the old
 honoring native Shelf protected keys. It never invokes the global
 `Shelf.deleteAll`. Deletion uses native `Shelf.delete`; bulk deletion is not
 atomic and may be partial on failure. Do not retry timed-out writes or clears
-automatically. Bridge calls are serialized, but this is not a transaction
+automatically. Storage operations are serialized, but this is not a transaction
 across unrelated native operations.
 
 Bridge writes still use `Shelf.putChecked`, which acknowledges persistence
@@ -152,3 +152,91 @@ Also verify: offline load and retry, invalid haptic type, leaving/reopening the
 tab, and a device without haptic hardware. The Maestro flow cannot establish
 physical feedback or bridge origin isolation; those require device/integration
 verification.
+
+## Native HTTP through Archbridge
+
+React owns its repositories and services. The HTTP path is:
+
+React component -> React repository -> React service -> `http.js` ->
+`ssa.http.request` -> native BridgeHttp -> existing ApiService.
+
+It does **not** invoke Flutter feature repositories. Native code owns credentials,
+base/audit headers, server selection, response normalization, and existing
+authentication/resilience behavior. React services map JSON into feature data.
+
+```js
+import { http } from './http.js';
+import { countriesRepository } from './features/countries/countriesRepository.js';
+
+const result = await countriesRepository.getCountries();
+if (result.ok) {
+  console.log(result.data); // [{ id, name, slug }]
+} else {
+  console.error(result.error.kind, result.error.code, result.error.message);
+}
+
+// Lower-level service API returns the native normalized JSON envelope:
+const raw = await http.get('kycCountry');
+```
+
+The facade has `get(endpoint, options)`, `post/put/patch(endpoint, data, options)`,
+and `delete(endpoint, options)`. Optional `queryParams`, `pathParams`, and DELETE
+`data` must be permitted by a native policy. The underlying native client only
+supports query parameters on GET/POST. Unknown options are rejected rather than
+silently dropped. PUT/PATCH require object bodies; GET bodies are rejected.
+
+Only **GET kycCountry** is enabled initially, without parameters. Additional
+methods/endpoints return ACCESS_DENIED until a reviewed native policy enables
+them. Adding a policy requires a mobile release; publishing React alone cannot
+expand its permissions. Never expose arbitrary URL/header/server controls.
+
+Success: `{ ok: true, data }`. Expected failure:
+`{ ok: false, error: { kind, code, message } }`. Kinds are `api` (safe native
+failure), `bridge` (validation, transport, timeout, disposal), and `parse`
+(service response-shape mismatch). Unexpected programming errors may still throw.
+No raw status or header fidelity is promised; this wraps ApiService, not fetch.
+Existing Shelf/haptic calls still use their existing throwing Promise API.
+
+The demo requests countries only when Load countries is pressed, not on
+prewarm/mount. Its button is disabled when `http.request` is absent from native
+capabilities. Missing bridge support never falls back to browser networking.
+
+**TODO: DAO support.** No automatic saving, persistent cache, offline cache
+fallback, page cache, or automatic pagination exists in this phase. Existing
+Shelf operations are unchanged and are not used as a replacement DAO.
+
+### Limits and lifecycle
+
+HTTP allows four in-flight operations independently of storage/haptics; excess
+calls return BUSY. The request envelope remains limited to 8192 characters.
+Serialized HTTP results are limited to 1048576 UTF-8 bytes before bridge transfer
+(this does not cap native download memory). HTTP waits up to 120 seconds; other
+bridge operations retain their five-second deadline.
+
+Timeout/disposal does not cancel native execution. Late replies are ignored.
+The JS facade and bridge add no retries; ApiService's existing native
+authentication/resilience retries still apply. Do not automatically retry writes
+after an ambiguous timeout. HTTP must not cancel the app's shared cancel token.
+
+### Production network restrictions
+
+The single-file build receives a CSP hashing its exact inline scripts/styles.
+Connections, external images/assets, frames, forms, workers, objects and base
+URL changes are denied; data images remain permitted. Vite's development server
+is not this production security configuration.
+
+Android uses WebSettings network-load blocking, not plugin content blockers
+that can make MIME-detection HEAD requests. iOS uses WK content-blocker rules.
+Both hosts retain main-frame/origin bridge checks and navigation restrictions.
+The generated HTML and native host must be rebuilt together.
+
+Verified locally: production build/hash tests, native configuration tests, and
+desktop Chrome rendering with a fake bridge. The Chrome probe blocked fetch,
+WebSocket, image, frame, worker and form requests; none reached the local test
+server. No Android device was connected; iOS was unavailable. Mobile enforcement,
+native bridge delivery under CSP, and the real countries response remain device/
+integration checks before rollout. The demo's DTO contract follows OptionModel;
+synthetic unit examples are not recorded countries API fixtures.
+
+Policy references: [CSP script hashes](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/script-src)
+and [WebView content blockers](https://inappwebview.dev/docs/webview/content-blockers/).
