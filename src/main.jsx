@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ssa } from './ssa.js';
+import { ssa, SsaError } from './ssa.js';
+import { shelf } from './shelf.js';
 import './style.css';
 
 function App() {
@@ -57,14 +58,17 @@ function App() {
     setBusy(true);
     try {
       if (action === 'set') {
-        await ssa.storage.set({ key: storageKey, value: storageValue });
+        if (storageKey === 'balanceVisibility' && !['true', 'false'].includes(storageValue)) {
+          throw new SsaError('INVALID_ARGUMENT', 'Enter true or false for balance visibility.');
+        }
+        await shelf.put(storageKey, storageKey === 'balanceVisibility' ? storageValue === 'true' : storageValue);
         setStorageStatus(`Saved “${storageKey}” on this device. Reopen the app and read it back.`);
       } else if (action === 'get') {
-        const value = await ssa.storage.get({ key: storageKey });
-        setStorageValue(value ?? '');
+        const value = await shelf.get(storageKey);
+        setStorageValue(value === null ? '' : String(value));
         setStorageStatus(value === null ? `No value saved for “${storageKey}”.` : `Read “${storageKey}” from native storage.`);
       } else {
-        await ssa.storage.remove({ key: storageKey });
+        await shelf.delete(storageKey);
         setStorageValue('');
         setStorageStatus(`Removed “${storageKey}” from this device.`);
       }
@@ -92,8 +96,16 @@ function App() {
       <h2 id="storage-heading">Native storage</h2>
       <p>Save a note on this device, then reopen the app and read it back. Use this for non-sensitive preferences or drafts.</p>
       <label htmlFor="storage-key">Key</label>
-      <input id="storage-key" value={storageKey} maxLength={64} disabled={busy}
-        onChange={(event) => setStorageKey(event.target.value)} />
+      <select id="storage-key" value={storageKey} disabled={busy}
+        onChange={(event) => {
+          const key = event.target.value;
+          setStorageKey(key);
+          setStorageValue(key === 'themeMode' ? 'ThemeMode.system' : key === 'balanceVisibility' ? 'false' : 'Hello from React');
+        }}>
+        <option value="demo.note">Demo note</option>
+        <option value="themeMode">Theme mode</option>
+        <option value="balanceVisibility">Balance visibility</option>
+      </select>
       <label htmlFor="storage-value">Value</label>
       <textarea id="storage-value" value={storageValue} rows={3} disabled={busy}
         onChange={(event) => setStorageValue(event.target.value)} />

@@ -80,42 +80,63 @@ back navigation is included. The bridge host and haptics support Android and iOS
 
 ## Native storage
 
+The React Shelf wrapper accesses the same native records as Flutter. There is
+no origin prefix or per-origin JSON record. The app's initialized Shelf is
+injected into the bridge; WebView origin checks still restrict bridge callers.
+
+| Web key | Native key | Accepted value |
+| --- | --- | --- |
+| `demo.note` | `ShelfKey.demoNote` | String |
+| `themeMode` | `ShelfKey.themeMode` | `ThemeMode.system`, `ThemeMode.light`, or `ThemeMode.dark` |
+| `balanceVisibility` | `ShelfKey.balanceVisibility` | Boolean |
+
+The allowlist is `BridgeStorage.allowedKeys`; the adapter validates each key's
+native value type. All other keys return `ACCESS_DENIED`, including tokens,
+account identifiers, biometric state, and trading settings. Add keys only with
+their expected types and a review of native callers.
+
 ```js
-await ssa.storage.set({ key: 'demo.note', value: 'Hello from React' });
-const note = await ssa.storage.get({ key: 'demo.note' }); // string or null
-await ssa.storage.remove({ key: 'demo.note' });
+import { shelf } from './shelf.js';
+
+await shelf.put('themeMode', 'ThemeMode.dark');
+await shelf.put('balanceVisibility', false);
+const mode = await shelf.get('themeMode', 'ThemeMode.system');
+const exists = await shelf.containsKey('demo.note');
+const removed = await shelf.delete('demo.note'); // true if present, false otherwise
+await shelf.deleteAll(); // clears the allowed shared keys, including native-created values
 ```
 
-`storage.set`, `storage.get`, and `storage.remove` are advertised independently
-of haptics by the capabilities handshake. The demo disables storage controls
-on older app builds. Missing keys return `null`; empty strings are valid values;
-setting replaces an existing value; removing a missing key succeeds.
+Flutter's `shelf.get<String>(ShelfKey.themeMode)` now reads exactly the value
+written by React. React reads are asynchronous; Flutter reads its Shelf cache
+synchronously. Missing web keys return null or the supplied fallback. False
+and empty string values do not trigger the fallback. Writes return null and
+accept at most 4096 JSON-encoded UTF-8 bytes. Arbitrary web keys, the old
+64-key quota, and the old per-origin aggregate quota no longer apply.
 
-Flutter uses `SharedPreferencesAsync` (native preferences on Android), never
-browser localStorage. Values survive WebView recreation and normal app restarts.
-Storage is scoped to the app installation and the fixed `https://ssa.local`
-origin. It is **not account-scoped** and remains after logout.
-Use it only for non-sensitive preferences/drafts, not credentials, financial
-records, or other critical data. App-data clearing/uninstall removes it.
+`deleteAll` takes no parameters, returns null, and iterates only the allowlist,
+honoring native Shelf protected keys. It never invokes the global
+`Shelf.deleteAll`. Deletion uses native `Shelf.delete`; bulk deletion is not
+atomic and may be partial on failure. Do not retry timed-out writes or clears
+automatically. Bridge calls are serialized, but this is not a transaction
+across unrelated native operations.
 
-Keys are 1–64 ASCII letters/digits/dots/underscores/hyphens, starting with a
-letter or digit. Values are strings with a maximum JSON-encoded UTF-8 size of
-4096 bytes (including quotes/escapes). Each origin is limited to 64 keys and
-64 KiB of encoded data. Serialize small objects explicitly with `JSON.stringify`.
-Native app preferences and credentials cannot be addressed through this API.
-There is no global clear or key enumeration operation.
+Bridge writes still use `Shelf.putChecked`, which acknowledges persistence
+before updating the cache and reports failures as `STORAGE_ERROR`. Existing
+Flutter `Shelf.put` error behavior has not been changed. This remains a separate
+architecture decision. Invalid input returns `INVALID_ARGUMENT`; a stored
+value with an incompatible type returns `STORAGE_CORRUPT`. Explicit replacement
+or deletion can repair that shared value.
 
-Errors include `INVALID_ARGUMENT`, `QUOTA_EXCEEDED`, `STORAGE_ERROR`, and
-`STORAGE_CORRUPT`. Failed validation/quota checks leave existing values intact;
-corrupt data is reported without silently overwriting it. Native operations on
-one bridge still reject overlap with `BUSY`; storage mutations across bridge
-instances are serialized within the Flutter isolate. Do not automatically retry
-timed-out writes: the operation might already have completed.
+Shared persistence does not notify Flutter view models automatically. Native
+screens that cache theme or balance state may apply changes only when their
+state is refreshed. Synchronizing live UI state requires the relevant native
+feature controller, not just a Shelf write.
 
-To try the demo, copy the generated HTML and install the updated Flutter build.
-Save a value, edit the field without saving, then Read to retrieve it. Reopen
-the app and Read again to check persistence. Remove it and Read to confirm the
-key is absent.
+Old SharedPreferences values and origin-prefixed Shelf records are untouched
+and are not migrated into native keys. Existing native values remain authoritative.
+Build the React HTML, copy it into Flutter assets, and rebuild/install the
+native app together for this contract change. The low-level
+`ssa.storage.get/set/remove/containsKey/deleteAll` methods remain available.
 
 ## Verification
 

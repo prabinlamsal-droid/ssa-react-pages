@@ -76,6 +76,8 @@ export function createSsaClient(transport, lifecycle = globalThis, timeoutMs = 5
     // Deprecated compatibility API for pages deployed before semantic haptics.
     vibrate: (params = { durationMs: 100 }) => call('device.vibrate', params),
     storage: Object.freeze({
+      containsKey: (params) => call('storage.containsKey', params),
+      deleteAll: () => call('storage.deleteAll'),
       get: (params) => call('storage.get', params),
       set: (params) => call('storage.set', params),
       remove: (params) => call('storage.remove', params),
