@@ -1,8 +1,60 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ssa, SsaError } from './ssa.js';
 import { shelf } from './shelf.js';
+import { countriesRepository } from './features/countries/countriesRepository.js';
 import './style.css';
+
+function CountriesSection({ available }) {
+  const [loading, setLoading] = useState(false);
+  const [countries, setCountries] = useState([]);
+  const [status, setStatus] = useState('No request made yet.');
+  const active = useRef(false);
+  const inFlight = useRef(false);
+  useEffect(() => {
+    active.current = true;
+    return () => { active.current = false; };
+  }, []);
+
+  async function load() {
+    if (inFlight.current || !available) return;
+    inFlight.current = true;
+    setLoading(true);
+    setStatus('Requesting through the native HTTP client…');
+    try {
+      const result = await countriesRepository.getCountries();
+      if (!active.current) return;
+      if (result.ok) {
+        setCountries(result.data);
+        setStatus(`Received ${result.data.length} countries. No local cache is used.`);
+      } else {
+        setCountries([]);
+        setStatus(`${result.error.kind}: ${result.error.code} — ${result.error.message}`);
+      }
+    } catch {
+      if (active.current) setStatus('The request could not complete.');
+    } finally {
+      inFlight.current = false;
+      if (active.current) setLoading(false);
+    }
+  }
+
+  return <section aria-labelledby="http-heading">
+    <h2 id="http-heading">Native HTTP</h2>
+    <p>React repository → React service → Archbridge → native HTTP client. DAO support is deferred.</p>
+    <button id="ssa-http-countries" disabled={!available || loading} onClick={load}>
+      {loading ? 'Requesting…' : 'Load countries'}
+    </button>
+    <p role="status" aria-live="polite">
+      {available ? status : 'Install the updated SSA app to enable native HTTP.'}
+    </p>
+    <ul id="ssa-http-results">
+      {countries.map((country, index) => <li key={`${country.id ?? 'country'}-${index}`}>
+        {country.name ?? country.slug ?? country.id ?? 'Unnamed country'}
+      </li>)}
+    </ul>
+  </section>;
+}
 
 function App() {
   const [ready, setReady] = useState(false);
@@ -11,6 +63,7 @@ function App() {
   const [hapticType, setHapticType] = useState('medium');
   const [status, setStatus] = useState('Connecting to SSA…');
   const [storageReady, setStorageReady] = useState(false);
+  const [httpReady, setHttpReady] = useState(false);
   const [storageKey, setStorageKey] = useState('demo.note');
   const [storageValue, setStorageValue] = useState('Hello from React');
   const [storageStatus, setStorageStatus] = useState('Waiting for the native bridge…');
@@ -24,6 +77,7 @@ function App() {
       setStatus(supported ? 'Native bridge ready' : 'This app version does not support semantic haptics.');
       const supportsStorage = ['storage.get', 'storage.set', 'storage.remove'].every((method) => methods.includes(method));
       setStorageReady(supportsStorage);
+      setHttpReady(methods.includes('http.request'));
       setStorageStatus(supportsStorage ? 'Native storage ready' : 'Install the updated SSA app to enable storage.');
       setCanReportReady(methods.includes('bridge.ready'));
     }).catch((error) => {
@@ -92,6 +146,7 @@ function App() {
       {busy ? 'Requesting…' : 'Trigger haptic'}
     </button>
     <p role="status" aria-live="polite">{status}</p>
+    <CountriesSection available={httpReady} />
     <section aria-labelledby="storage-heading">
       <h2 id="storage-heading">Native storage</h2>
       <p>Save a note on this device, then reopen the app and read it back. Use this for non-sensitive preferences or drafts.</p>
