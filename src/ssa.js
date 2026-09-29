@@ -8,7 +8,7 @@ export class SsaError extends Error {
 }
 
 /** Creates a client bound to one page and one native message transport. */
-export function createSsaClient(transport, lifecycle = globalThis, timeoutMs = 5000) {
+export function createSsaClient(transport, lifecycle = globalThis, timeoutMs = 5000, httpTimeoutMs = 120000) {
   const pending = new Map();
   let sequence = 0;
   let disposed = false;
@@ -27,7 +27,7 @@ export function createSsaClient(transport, lifecycle = globalThis, timeoutMs = 5
 
   if (transport) transport.onmessage = receive;
 
-  function call(method, params = {}) {
+  function call(method, params = {}, deadlineMs = timeoutMs) {
     if (disposed) return Promise.reject(new SsaError('DISPOSED', 'The bridge client has closed.'));
     if (!transport) return Promise.reject(new SsaError('BRIDGE_UNAVAILABLE', 'Open this page in the SSA Bridge tab.'));
     const id = String(++sequence);
@@ -35,7 +35,7 @@ export function createSsaClient(transport, lifecycle = globalThis, timeoutMs = 5
       const timer = setTimeout(() => {
         pending.delete(id);
         reject(new SsaError('TIMEOUT', 'Native request timed out. It may already have executed; do not automatically retry.'));
-      }, timeoutMs);
+      }, deadlineMs);
       pending.set(id, { resolve, reject, timer });
       try {
         const message = JSON.stringify({ version: 1, id, method, params });
@@ -70,6 +70,9 @@ export function createSsaClient(transport, lifecycle = globalThis, timeoutMs = 5
   return Object.freeze({
     capabilities: () => call('bridge.capabilities'),
     ready: () => call('bridge.ready'),
+    http: Object.freeze({
+      request: (params) => call('http.request', params, httpTimeoutMs),
+    }),
     haptics: Object.freeze({
       trigger: (params) => call('device.haptic', params),
     }),
