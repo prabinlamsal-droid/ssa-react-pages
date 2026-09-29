@@ -11,7 +11,7 @@ function harness(t, timeoutMs = 5000, httpTimeoutMs = 120000) {
   const reply = (id, result, error) => transport.onmessage?.({ data: JSON.stringify({
     id, ok: !error, ...(error ? { error } : { result }),
   }) });
-  return { requests, client, http: createHttpClient(client), reply };
+  return { requests, transport, client, http: createHttpClient(client), reply };
 }
 
 test('HTTP helpers send all five verbs through the single bridge and preserve JSON results', async t => {
@@ -110,5 +110,20 @@ test('HTTP options cannot replace the chosen endpoint or method', async t => {
   const pending = h.http.get('kycCountry', { method: 'POST', endpoint: 'auth', headers: { token: 'secret' } });
   assert.equal((await pending).error.code, 'INVALID_ARGUMENT');
   assert.equal(h.requests.length, 0);
+});
+
+test('replacing a disposed client cannot deliver an old response into its successor', async t => {
+  const h = harness(t);
+  const oldRequest = h.http.get('kycCountry');
+  const oldId = h.requests.at(-1).id;
+  h.client.dispose();
+  assert.equal((await oldRequest).error.code, 'DISPOSED');
+  const successor = createSsaClient(h.transport, {});
+  t.after(() => successor.dispose());
+  const nextRequest = createHttpClient(successor).get('kycCountry');
+  const nextId = h.requests.at(-1).id;
+  h.reply(oldId, { ok: true, data: 'stale previous client data' });
+  h.reply(nextId, { ok: true, data: 'current client data' });
+  assert.deepEqual(await nextRequest, { ok: true, data: 'current client data' });
 });
 

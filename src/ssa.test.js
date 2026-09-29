@@ -11,7 +11,9 @@ test('readiness uses the versioned native bridge without parameters', async () =
   const client = createSsaClient(transport, {});
   try {
     await client.ready();
-    assert.deepEqual(sent, { version: 1, id: '1', method: 'bridge.ready', params: {} });
+    const { id, ...message } = sent;
+    assert.match(id, /^[1-9]\d*$/);
+    assert.deepEqual(message, { version: 1, method: 'bridge.ready', params: {} });
   } finally { client.dispose(); }
 });
 
@@ -24,7 +26,9 @@ test('semantic haptics go through the native device.haptic method', async () => 
   const client = createSsaClient(transport, {});
   try {
     await client.haptics.trigger({ type: 'success' });
-    assert.deepEqual(sent, { version: 1, id: '1', method: 'device.haptic', params: { type: 'success' } });
+    const { id, ...message } = sent;
+    assert.match(id, /^[1-9]\d*$/);
+    assert.deepEqual(message, { version: 1, method: 'device.haptic', params: { type: 'success' } });
   } finally { client.dispose(); }
 });
 
@@ -44,7 +48,9 @@ test('storage goes through native transport and survives recreating the JS clien
   let client = createSsaClient(transport, {});
   try {
     await client.storage.set({ key: 'note', value: 'नमस्ते' });
-    assert.deepEqual(sent[0], { version: 1, id: '1', method: 'storage.set', params: { key: 'note', value: 'नमस्ते' } });
+    const { id, ...message } = sent[0];
+    assert.match(id, /^[1-9]\d*$/);
+    assert.deepEqual(message, { version: 1, method: 'storage.set', params: { key: 'note', value: 'नमस्ते' } });
     client.dispose();
     client = createSsaClient(transport, {});
     assert.equal(await client.storage.get({ key: 'note' }), 'नमस्ते');
