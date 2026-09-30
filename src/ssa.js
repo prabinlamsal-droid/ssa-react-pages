@@ -7,13 +7,10 @@ export class SsaError extends Error {
   }
 }
 
-// Shared across client replacements within this document so late responses
-// cannot collide with a new client's requests. Native guards cover navigation.
-let requestSequence = 0;
-
 /** Creates a client bound to one page and one native message transport. */
-export function createSsaClient(transport, lifecycle = globalThis, timeoutMs = 5000, httpTimeoutMs = 120000) {
+export function createSsaClient(transport, lifecycle = globalThis, timeoutMs = 5000) {
   const pending = new Map();
+  let sequence = 0;
   let disposed = false;
 
   function receive(event) {
@@ -30,15 +27,15 @@ export function createSsaClient(transport, lifecycle = globalThis, timeoutMs = 5
 
   if (transport) transport.onmessage = receive;
 
-  function call(method, params = {}, deadlineMs = timeoutMs) {
+  function call(method, params = {}) {
     if (disposed) return Promise.reject(new SsaError('DISPOSED', 'The bridge client has closed.'));
     if (!transport) return Promise.reject(new SsaError('BRIDGE_UNAVAILABLE', 'Open this page in the SSA Bridge tab.'));
-    const id = String(++requestSequence);
+    const id = String(++sequence);
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         pending.delete(id);
         reject(new SsaError('TIMEOUT', 'Native request timed out. It may already have executed; do not automatically retry.'));
-      }, deadlineMs);
+      }, timeoutMs);
       pending.set(id, { resolve, reject, timer });
       try {
         const message = JSON.stringify({ version: 1, id, method, params });
@@ -68,14 +65,12 @@ export function createSsaClient(transport, lifecycle = globalThis, timeoutMs = 5
     }
     pending.clear();
   }
+
   lifecycle.addEventListener?.('pagehide', dispose);
 
   return Object.freeze({
     capabilities: () => call('bridge.capabilities'),
     ready: () => call('bridge.ready'),
-    http: Object.freeze({
-      request: (params) => call('http.request', params, httpTimeoutMs),
-    }),
     haptics: Object.freeze({
       trigger: (params) => call('device.haptic', params),
     }),
