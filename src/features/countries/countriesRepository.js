@@ -1,14 +1,23 @@
 import { countriesService } from './countriesService.js';
+import { countriesDao } from './countriesDao.js';
+import { resolveCached } from '../../cache.js';
 
-/** React owns feature orchestration; this repository is currently network-only. */
-export function createCountriesRepository(service = countriesService) {
+/** React owns cache policy; the DAO supplies native records and freshness. */
+export function createCountriesRepository(service = countriesService, dao = countriesDao) {
+  let pending;
   return Object.freeze({
-    getCountries() {
-      // TODO: implement DAO-backed persistence and cache policy in the later DAO phase.
-      return service.getCountries();
+    getCountries({ refresh = false } = {}) {
+      // Join a running request rather than race two database replacements.
+      if (pending) return pending;
+      pending = resolveCached({
+        onRemote: () => service.getCountries(),
+        onCache: () => dao.getCountries(),
+        onSave: data => dao.saveCountries(data),
+        refresh,
+      }).finally(() => { pending = null; });
+      return pending;
     },
   });
 }
 
 export const countriesRepository = createCountriesRepository();
-

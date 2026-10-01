@@ -198,17 +198,93 @@ No raw status or header fidelity is promised; this wraps ApiService, not fetch.
 Existing Shelf/haptic calls still use their existing throwing Promise API.
 
 The demo requests countries only when Load countries is pressed, not on
-prewarm/mount. Its button is disabled when `http.request` is absent from native
+prewarm/mount. Its button is disabled when HTTP or DAO get/put support is absent from native
 capabilities. Missing bridge support never falls back to browser networking.
 
-**TODO: DAO support.** No automatic saving, persistent cache, offline cache
-fallback, page cache, or automatic pagination exists in this phase. Existing
-Shelf operations are unchanged and are not used as a replacement DAO.
+### Web-owned device DAO stores
+
+React uses a generic device-backed store API:
+
+```js
+import { dao } from './dao.js';
+
+const store = dao.store('countries');
+await store.put('cache', { data: countries, updatedAt: new Date().toISOString() });
+const entry = await store.get('cache'); // JSON object, or null when missing
+await store.delete('cache');
+await store.clear(); // only this store
+```
+
+Flutter enforces the physical name `web.countries`. Logical names allow 1–64
+letters, digits, underscores or hyphens; keys are nonempty strings up to 256
+characters. Values are JSON objects (nested arrays/objects allowed, finite
+numbers only, maximum nesting depth 64). Mutations return null on success;
+failures reject with a bridge error. There is no browser-storage fallback.
+
+The protocol is `dao.get/put/delete/clear` with `{store, key}`;
+put adds `value`, and clear accepts only `store`. Native validation prevents
+access to Flutter feature stores. No per-feature Dart DAO, SQL, raw database
+path, pagination or arbitrary query interface is needed. New React DAOs can
+choose new logical store names without adding native registrations.
+
+The countries path is `CountriesRepository -> CountriesDao -> DAO store
+-> bridge -> Sembast`. Its single `cache` record contains `{data, updatedAt}`,
+so the list and timestamp are saved atomically. React computes seven-day
+freshness; missing records are misses, empty saved lists are valid hits,
+and malformed/future timestamps are stale. Explicit refresh fetches again.
+Network failures may return stale cached data; authentication failures remain
+errors. Cache-save failures preserve network success with a warning. Concurrent
+repository requests share one request. Countries are one complete list, not paginated.
+
+Native countries DAOs, stores and freshness rules are unchanged and independent.
+Web data is NOT shared with native countries, nor automatically separated by API
+server. Features needing environment-specific cache keys must add that policy
+explicitly. The prior experimental shared cache is not migrated or deleted.
+React starts with an empty web store.
+
+These stores use the non-eternal device database and its existing logout purge.
+Transactions use the purge lock and reject operations from disposed sessions,
+changed accounts or changed KYC environments. Reopen the bridge after a server
+switch. Shelf remains unchanged for small shared preferences.
+
+### Web failure containment
+
+React is wrapped in a root error boundary. Uncaught JavaScript errors and
+unhandled promise rejections latch a single failed-page state, settle pending
+bridge requests, and send only a fixed category through `bridge.failed`.
+Exception text, stacks, request bodies and credentials are not sent to Flutter.
+Handled API/validation failures remain normal feature errors.
+
+Flutter keeps a 20-second startup-readiness deadline. Android renderer death and
+unresponsiveness, iOS content-process termination, main-frame errors and reported
+web crashes move only this web session to a native, scrollable Retry screen.
+The failed WebView is detached and its resources are disposed with bounded,
+independently guarded cleanup. Late callbacks cannot mark a failed page healthy;
+back-navigation controller errors are contained. Native navigation remains outside
+the web session.
+
+Retry explicitly recreates the web session; it does not log out, clear device
+data, or replay requests. An already submitted operation may still finish.
+The UI warns users to check its status before submitting again. No global
+Flutter exception handler is replaced and no app-wide HTTP cancellation is used.
+
+Malformed bridge messages, non-JSON handler results and unexpected native handler
+exceptions return sanitized failures. JavaScript bounds outstanding requests,
+retains existing timeouts and rejects malformed response envelopes. Crash/readiness
+control messages can bypass the normal busy slot so recovery is not blocked by
+a stuck operation.
+
+This is containment, not a guarantee against OS killing the entire app,
+out-of-memory conditions or native engine/plugin crashes. Runtime renderer-death
+recovery still needs Android/iOS device validation. No periodic heartbeat is used:
+background/prewarmed WebViews can throttle JavaScript, which would cause false alarms.
 
 ### Limits and lifecycle
 
 HTTP allows four in-flight operations independently of storage/haptics; excess
-calls return BUSY. The request envelope remains limited to 8192 characters.
+calls return BUSY. Request envelopes are limited to 8192 characters except
+`dao.put`, which permits 262144 characters including the request envelope.
+Database record replies are capped at 262144 characters.
 Serialized HTTP results are limited to 1048576 UTF-8 bytes before bridge transfer
 (this does not cap native download memory). HTTP waits up to 120 seconds; other
 bridge operations retain their five-second deadline.

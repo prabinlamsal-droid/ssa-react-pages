@@ -4,6 +4,9 @@ import { ssa, SsaError } from './ssa.js';
 import { shelf } from './shelf.js';
 import { countriesRepository } from './features/countries/countriesRepository.js';
 import './style.css';
+import { createWebResilience, WebErrorBoundary } from './resilience.js';
+
+const webResilience = createWebResilience({ client: ssa });
 
 function CountriesSection({ available }) {
   const [loading, setLoading] = useState(false);
@@ -16,17 +19,17 @@ function CountriesSection({ available }) {
     return () => { active.current = false; };
   }, []);
 
-  async function load() {
+  async function load(refresh = false) {
     if (inFlight.current || !available) return;
     inFlight.current = true;
     setLoading(true);
     setStatus('Requesting through the native HTTP client…');
     try {
-      const result = await countriesRepository.getCountries();
+      const result = await countriesRepository.getCountries({ refresh });
       if (!active.current) return;
       if (result.ok) {
         setCountries(result.data);
-        setStatus(`Received ${result.data.length} countries. No local cache is used.`);
+        setStatus(`${result.data.length} countries from ${result.source}.${result.stale ? ' Offline: saved data may be outdated.' : ''}${result.cacheWarning ? ' ' + result.cacheWarning : ''}`);
       } else {
         setCountries([]);
         setStatus(`${result.error.kind}: ${result.error.code} — ${result.error.message}`);
@@ -41,10 +44,11 @@ function CountriesSection({ available }) {
 
   return <section aria-labelledby="http-heading">
     <h2 id="http-heading">Native HTTP</h2>
-    <p>React repository → React service → Archbridge → native HTTP client. DAO support is deferred.</p>
-    <button id="ssa-http-countries" disabled={!available || loading} onClick={load}>
+    <p>Countries are saved on this device for seven days. Refresh to check for updates.</p>
+    <button id="ssa-http-countries" disabled={!available || loading} onClick={() => load()}>
       {loading ? 'Requesting…' : 'Load countries'}
     </button>
+    <button id="ssa-http-refresh" disabled={!available || loading} onClick={() => load(true)}>Refresh countries</button>
     <p role="status" aria-live="polite">
       {available ? status : 'Install the updated SSA app to enable native HTTP.'}
     </p>
@@ -77,7 +81,7 @@ function App() {
       setStatus(supported ? 'Native bridge ready' : 'This app version does not support semantic haptics.');
       const supportsStorage = ['storage.get', 'storage.set', 'storage.remove'].every((method) => methods.includes(method));
       setStorageReady(supportsStorage);
-      setHttpReady(methods.includes('http.request'));
+      setHttpReady(['http.request', 'dao.get', 'dao.put'].every(method => methods.includes(method)));
       setStorageStatus(supportsStorage ? 'Native storage ready' : 'Install the updated SSA app to enable storage.');
       setCanReportReady(methods.includes('bridge.ready'));
     }).catch((error) => {
@@ -174,4 +178,10 @@ function App() {
   </main>;
 }
 
-createRoot(document.getElementById('root')).render(<App />);
+try {
+  createRoot(document.getElementById('root')).render(
+    <WebErrorBoundary runtime={webResilience}><App /></WebErrorBoundary>,
+  );
+} catch {
+  webResilience.fail('bootstrap');
+}

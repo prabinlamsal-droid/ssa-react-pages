@@ -3,17 +3,19 @@ import { test } from 'node:test';
 import { createCountriesService } from './features/countries/countriesService.js';
 import { createCountriesRepository } from './features/countries/countriesRepository.js';
 
-test('React repository and service use HTTP once per call with no storage or cache', async () => {
+test('React repository and service fetch and save once on a cache miss', async () => {
   let calls = 0;
   const client = { async get(endpoint) {
     assert.equal(endpoint, 'kycCountry');
     calls++;
     return { ok: true, data: { data: [] } };
   } };
-  const repository = createCountriesRepository(createCountriesService(client));
-  assert.deepEqual(await repository.getCountries(), { ok: true, data: [] });
-  assert.deepEqual(await repository.getCountries(), { ok: true, data: [] });
-  assert.equal(calls, 2);
+  let entry = null;
+  const dao = { getCountries: async () => entry, saveCountries: async data => { entry = { data, fresh: true }; } };
+  const repository = createCountriesRepository(createCountriesService(client), dao);
+  assert.deepEqual(await repository.getCountries(), { ok: true, data: [], source: 'network', stale: false });
+  assert.deepEqual(await repository.getCountries(), { ok: true, data: [], source: 'cache', stale: false });
+  assert.equal(calls, 1);
 });
 
 test('countries shape conversion retains only nullable string option fields', async () => {
