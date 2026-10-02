@@ -1,5 +1,30 @@
 # SSA React Pages
 
+## ArcBridge workflow
+
+The reusable SDK/build tooling now lives in the sibling `../arcbridge` package.
+Local bridge files are compatibility re-exports; application services/repositories
+remain here. Run `npm install` with the committed install-links setting.
+
+- `npm run dev`: standalone browser development. The default countries response
+  is a clearly configured fixture; Shelf uses localStorage and DAO uses IndexedDB.
+- `npm run build`: mobile-only `dist/index.html`, without development adapters/config.
+- `npm run validate:mobile`: verify the generated HTML and CSP.
+- `npm run build:mobile`: build and explicitly copy to the configured Flutter assets.
+
+Use `arcbridge.dev.example.mjs` for staging HTTP/proxy setup. Put credentials in
+Node environment variables, never client mappings. Local dev config is ignored.
+Browser/device data are separate; haptics are simulated and sockets unavailable
+in browser development. See [ArcBridge package guide](../arcbridge/README.md).
+
+The existing Flutter asset contains a newer market app than this demo source.
+It has **not** been replaced. Copy refuses unlabelled legacy HTML: reconcile the
+correct source and migrate its ownership metadata before replacing that artifact.
+Rebuild Flutter after copying; commands never commit or push either repository.
+
+The native behavior documented below remains unchanged; use the commands above
+for the new package-driven workflow.
+
 For web/native error handling, recovery, and payload limits, see
 [Bridge resilience](RESILIENCE_README.md).
 

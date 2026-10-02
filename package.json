@@ -4,12 +4,15 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "test": "vite build && node --test src/*.test.js",
-    "dev": "vite --host 127.0.0.1 --port 5173 --strictPort",
-    "build": "vite build",
-    "preview": "vite preview --host 127.0.0.1 --port 5173 --strictPort"
+    "test": "arcbridge build && node --test src/*.test.js",
+    "dev": "arcbridge dev",
+    "build": "arcbridge build",
+    "preview": "vite preview --host 127.0.0.1 --port 5173 --strictPort",
+    "build:mobile": "arcbridge build --copy",
+    "validate:mobile": "arcbridge validate"
   },
   "dependencies": {
+    "@naasa/arcbridge": "file:../arcbridge",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

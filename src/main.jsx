@@ -63,6 +63,7 @@ function CountriesSection({ available }) {
 
 function App() {
   const [ready, setReady] = useState(false);
+  const [browserDevelopment, setBrowserDevelopment] = useState(false);
   const [canReportReady, setCanReportReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [hapticType, setHapticType] = useState('medium');
@@ -76,16 +77,17 @@ function App() {
 
   useEffect(() => {
     let active = true;
-    ssa.capabilities().then(({ methods }) => {
+    ssa.capabilities().then(({ methods, development = false }) => {
       if (!active) return;
+      setBrowserDevelopment(development);
       const supported = methods.includes('device.haptic');
       setReady(supported);
-      setStatus(supported ? 'Native bridge ready' : 'This app version does not support semantic haptics.');
+      setStatus(supported ? (development ? 'Browser development ready — haptics are simulated.' : 'Native bridge ready') : 'This app version does not support semantic haptics.');
       const supportsStorage = ['storage.get', 'storage.set', 'storage.remove'].every((method) => methods.includes(method));
       setStorageReady(supportsStorage);
       setSocketReady(['socket.subscribe', 'socket.unsubscribe'].every(method => methods.includes(method)));
       setHttpReady(['http.request', 'dao.get', 'dao.put'].every(method => methods.includes(method)));
-      setStorageStatus(supportsStorage ? 'Native storage ready' : 'Install the updated SSA app to enable storage.');
+      setStorageStatus(supportsStorage ? (development ? 'Browser development storage ready' : 'Native storage ready') : 'Install the updated SSA app to enable storage.');
       setCanReportReady(methods.includes('bridge.ready'));
     }).catch((error) => {
       if (active) {
@@ -107,7 +109,7 @@ function App() {
     setBusy(true);
     try {
       await ssa.haptics.trigger({ type: hapticType });
-      setStatus(`${hapticType} haptic request accepted by the device.`);
+      setStatus(browserDevelopment ? `${hapticType} haptic simulated — test physical feedback on mobile.` : `${hapticType} haptic request accepted by the device.`);
     } catch (error) {
       setStatus(`${error.code}: ${error.message}`);
     } finally {
