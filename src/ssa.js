@@ -1,1 +1,2 @@
-export {ssa, SsaError, createSsaClient} from '@naasa/arcbridge';
+export { createSsaClient, SsaError } from './client.js';
+export { ssa } from './adapter.js';
