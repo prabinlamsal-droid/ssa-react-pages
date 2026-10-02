@@ -1,5 +1,8 @@
 # SSA React Pages
 
+For web/native error handling, recovery, and payload limits, see
+[Bridge resilience](RESILIENCE_README.md).
+
 Standalone React repository: https://github.com/prabinlamsal-droid/ssa-react-pages.git
 
 This repository owns the web pages and JavaScript bridge client. The sibling
