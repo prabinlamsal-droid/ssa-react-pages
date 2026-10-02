@@ -1,3 +1,5 @@
+import { createSocketClient } from './socket.js';
+
 /** Public error contract shared by all SSA bridge operations. */
 export class SsaError extends Error {
   constructor(code, message) {
@@ -36,14 +38,18 @@ export function createSsaClient(transport, lifecycle = globalThis, timeoutMs = 5
   function call(method, params = {}, deadlineMs = timeoutMs) {
     if (disposed) return Promise.reject(new SsaError('DISPOSED', 'The bridge client has closed.'));
     if (!transport) return Promise.reject(new SsaError('BRIDGE_UNAVAILABLE', 'Open this page in the SSA Bridge tab.'));
-    if (pending.size >= (method === 'bridge.failed' ? 65 : 64)) return Promise.reject(new SsaError('BUSY', 'Too many pending native requests.'));
+    const pool = name => name === 'socket.unsubscribe' ? 'cleanup' : name === 'bridge.failed' ? 'crash' : 'ordinary';
+    const requestPool = pool(method);
+    const inFlight = [...pending.values()].filter(request => pool(request.method) === requestPool).length;
+    const limit = requestPool === 'cleanup' ? 32 : requestPool === 'crash' ? 1 : 64;
+    if (inFlight >= limit) return Promise.reject(new SsaError('BUSY', 'Too many pending native requests.'));
     const id = String(++requestSequence);
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         pending.delete(id);
         reject(new SsaError('TIMEOUT', 'Native request timed out. It may already have executed; do not automatically retry.'));
       }, deadlineMs);
-      pending.set(id, { resolve, reject, timer });
+      pending.set(id, { resolve, reject, timer, method });
       try {
         const message = JSON.stringify({ version: 1, id, method, params });
         const limit = method === 'dao.put' ? 262144 : 8192;
@@ -62,8 +68,11 @@ export function createSsaClient(transport, lifecycle = globalThis, timeoutMs = 5
     });
   }
 
+  const sockets = createSocketClient({ call, lifecycle, ErrorClass: SsaError });
+
   function dispose() {
     if (disposed) return;
+    sockets.dispose();
     disposed = true;
     if (transport) transport.onmessage = null;
     lifecycle.removeEventListener?.('pagehide', dispose);
@@ -77,6 +86,7 @@ export function createSsaClient(transport, lifecycle = globalThis, timeoutMs = 5
 
   return Object.freeze({
     capabilities: () => call('bridge.capabilities'),
+    socket: sockets.api,
     ready: () => call('bridge.ready'),
     failed: kind => call('bridge.failed', { kind }),
     dao: Object.freeze({

@@ -316,3 +316,49 @@ synthetic unit examples are not recorded countries API fixtures.
 
 Policy references: [CSP script hashes](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/script-src)
 and [WebView content blockers](https://inappwebview.dev/docs/webview/content-blockers/).
+
+
+## Native market socket
+
+The bridge exposes SSA's existing authenticated market socket through `ssa.socket.subscribe`.
+Flutter owns the server URL, credentials, connection and reconnect policy. This version supports
+`stock`, `indices` and `stockDepth` feeds; it does not open arbitrary WebSocket URLs or send
+arbitrary messages to the trading server.
+
+```js
+const subscription = ssa.socket.subscribe({
+  endpoint: 'market',
+  params: { instrument: 'stock', symbol: 'NABIL' },
+  onMessage: tick => console.log(tick),
+  onState: state => console.log(state),
+  onError: error => console.error(error.code, error.message),
+});
+await subscription.ready; // Registered; the shared connection may still be disconnected.
+await subscription.close(); // Release in your React effect/service cleanup.
+```
+
+Register callbacks before awaiting `ready`: updates can arrive before the acknowledgement.
+The returned `id` is unique to this document. `close()` is idempotent, and closed subscriptions
+ignore late events. A native `closed` event is terminal; reconnect states such as
+`unexpectedDisconnect`, `connecting`, and `connected` do not require resubscribing.
+Native reconnect behavior remains controlled by the app; the bridge does not start another loop.
+
+Messages contain the native socket's decoded field map, including `ticker`; React services
+own field conversion and business logic. These are live updates, not cached snapshots. Fetch an
+initial snapshot separately if needed; no automatic DAO writes or replay are performed.
+
+Each document is limited to 32 subscriptions, with a 64 KiB JSON data limit per event.
+Under load, pending market updates for the same subscription are replaced by the latest update.
+This API is therefore for current market state, not a lossless trade/event history.
+A failed subscription rejects `ready` and reports to `onError`; callback failures are contained.
+
+Flutter emits `ssa:socket` events with `version`, `type: 'event'`, `subscriptionId`,
+`event` (`message`, `state`, `error`, or `closed`), `sequence`, and `data`.
+The JS client routes these independently from one-response HTTP/storage requests.
+Logout, document reload, bridge failure, and session disposal release web subscriptions
+without disconnecting native consumers. React must close subscriptions on SPA page unmount.
+
+The demo includes subscribe/close controls and the latest received update.
+The Flutter asset currently contains a newer market application than this checkout's demo.
+Build/test this project normally, but integrate these source changes into that market source
+before replacing Flutter's bundled HTML; blindly copying this demo would remove its market UI.

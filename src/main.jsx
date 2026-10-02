@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ssa, SsaError } from './ssa.js';
 import { shelf } from './shelf.js';
+import { SocketSection } from './SocketSection.jsx';
 import { countriesRepository } from './features/countries/countriesRepository.js';
 import './style.css';
 import { createWebResilience, WebErrorBoundary } from './resilience.js';
@@ -68,6 +69,7 @@ function App() {
   const [status, setStatus] = useState('Connecting to SSA…');
   const [storageReady, setStorageReady] = useState(false);
   const [httpReady, setHttpReady] = useState(false);
+  const [socketReady, setSocketReady] = useState(false);
   const [storageKey, setStorageKey] = useState('demo.note');
   const [storageValue, setStorageValue] = useState('Hello from React');
   const [storageStatus, setStorageStatus] = useState('Waiting for the native bridge…');
@@ -81,6 +83,7 @@ function App() {
       setStatus(supported ? 'Native bridge ready' : 'This app version does not support semantic haptics.');
       const supportsStorage = ['storage.get', 'storage.set', 'storage.remove'].every((method) => methods.includes(method));
       setStorageReady(supportsStorage);
+      setSocketReady(['socket.subscribe', 'socket.unsubscribe'].every(method => methods.includes(method)));
       setHttpReady(['http.request', 'dao.get', 'dao.put'].every(method => methods.includes(method)));
       setStorageStatus(supportsStorage ? 'Native storage ready' : 'Install the updated SSA app to enable storage.');
       setCanReportReady(methods.includes('bridge.ready'));
@@ -151,6 +154,7 @@ function App() {
     </button>
     <p role="status" aria-live="polite">{status}</p>
     <CountriesSection available={httpReady} />
+    <SocketSection available={socketReady} />
     <section aria-labelledby="storage-heading">
       <h2 id="storage-heading">Native storage</h2>
       <p>Save a note on this device, then reopen the app and read it back. Use this for non-sensitive preferences or drafts.</p>
