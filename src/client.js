@@ -89,6 +89,9 @@ export function createSsaClient(transport, lifecycle = globalThis, timeoutMs = 5
     socket: sockets.api,
     ready: () => call('bridge.ready'),
     failed: kind => call('bridge.failed', { kind }),
+    device: Object.freeze({ specs: () => call('device.specs') }),
+    symbol: Object.freeze({ pick: () => call('symbol.pick', {}, httpTimeoutMs) }),
+    market: Object.freeze({ live: params => call('market.live', params) }),
     dao: Object.freeze({
       get: params => call('dao.get', params),
       put: params => call('dao.put', params),

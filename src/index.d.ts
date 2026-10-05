@@ -14,6 +14,9 @@ export interface BridgeClient {
  ready(): Promise<Json>; failed(kind: string): Promise<Json>; dispose(): void;
  vibrate(params?: {durationMs: number}): Promise<Json>;
  haptics: {trigger(params: {type: string}): Promise<Json>};
+ device: {specs(): Promise<{screenWidth: number; screenHeight: number; contentHeight: number}>};
+ symbol: {pick(): Promise<string | null>};
+ market: {live(params: {action: 'start' | 'stop'}): Promise<Json>};
  http: {request(params: JsonObject): Promise<Json>};
  storage: {get(params: {key: string}): Promise<Json>; set(params: {key: string; value: Json}): Promise<null>;
  remove(params: {key: string}): Promise<boolean>; containsKey(params: {key: string}): Promise<boolean>; deleteAll(): Promise<null>};

@@ -1,5 +1,21 @@
 # ArcBridge
 
+### Native market capabilities
+
+Capability-check these methods before using them; browser development does not
+simulate them. The consuming app owns its pages, chart renderer and indicators.
+
+- `ssa.device.specs()` requests logical-pixel `screenWidth`, `screenHeight` and
+  `contentHeight`; later native updates arrive as `ssa:device-specs` events.
+- `ssa.symbol.pick()` opens native symbol selection and resolves to a ticker
+  string, or `null` when cancelled. It uses the longer interactive deadline.
+- `ssa.market.live({action: 'start'})` starts native live-market snapshots via
+  `ssa:live-market` events. Register the event listener before starting, and call
+  `ssa.market.live({action: 'stop'})` when leaving the view.
+
+These APIs preserve the existing Flutter message names. They do not implement
+new native handlers or replace the separate `ssa.socket.subscribe` API.
+
 Reusable native bridge SDK and development/build tools. Current version: 0.1.0.
 Use Node 22.12+ (tested with Node 24) and the packaged Vite 7 toolchain.
 
