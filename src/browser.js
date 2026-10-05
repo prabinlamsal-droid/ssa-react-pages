@@ -58,6 +58,7 @@ export function createBrowserTransport({appId, contract, development = {}, targe
     });
   }
   async function http(p) {
+    const apiFailure = (code,message) => ({ok:false,error:{kind:'api',code,message}});
     const endpoint = contract.endpoints?.[p.endpoint];
     const mapping = development.endpoints?.[p.endpoint];
     if (!endpoint || !mapping || endpoint.method !== p.method) fail('ACCESS_DENIED','HTTP endpoint or method is not allowed.');
@@ -72,6 +73,19 @@ export function createBrowserTransport({appId, contract, development = {}, targe
     fields(p.pathParams??{},endpoint.pathFields,Object.keys(endpoint.pathFields??{}));
     if(Object.keys(p.queryParams??{}).length&&!['GET','POST'].includes(p.method))fail('INVALID_ARGUMENT','Query arguments are not supported for this method.');
     if(Object.hasOwn(p,'data')){if(p.method==='GET')fail('INVALID_ARGUMENT','GET cannot have a body.');fields(p.data,endpoint.bodyFields);}
+    // Explicit per-endpoint opt-in; never attach credentials to login/other URLs.
+    const sessionKey = mapping.bearerSessionKey;
+    if (sessionKey !== undefined && (typeof sessionKey !== 'string' || !sessionKey || sessionKey.length > 256)) {
+      fail('INVALID_ARGUMENT', 'Invalid browser authentication configuration.');
+    }
+    const readToken = () => {
+      try {
+        const token = target.sessionStorage?.getItem(sessionKey);
+        return typeof token === 'string' && token.length <= 8192 && /^[A-Za-z0-9._~+-]+$/.test(token) ? token : null;
+      } catch { return null; }
+    };
+    const token = sessionKey === undefined ? null : readToken();
+    if (sessionKey !== undefined && !token) return apiFailure('unAuthorized','Sign in to the browser development app first.');
     const success=data=>{
       const result={ok:true,data};if(bytes(result)>1048576)fail('PAYLOAD_TOO_LARGE','HTTP response exceeds its transfer limit.');return result;
     };
@@ -81,16 +95,19 @@ export function createBrowserTransport({appId, contract, development = {}, targe
     if (/:[a-zA-Z]\w*(?:\/|$)/.test(path.replace(/^https?:\/\//,''))) fail('INVALID_ARGUMENT','Missing path parameter.');
     const url = new URL(path,target.location?.origin);
     if (!['http:','https:'].includes(url.protocol)) fail('INVALID_ARGUMENT','Invalid development URL.');
+    if (token && url.protocol !== 'https:' && !['localhost','127.0.0.1','[::1]'].includes(url.hostname)) {
+      fail('INVALID_ARGUMENT', 'Browser credentials require HTTPS or a local development server.');
+    }
     for (const [key,value] of Object.entries(p.queryParams ?? {})) {
       if (value !== null && value !== undefined) url.searchParams.set(key,String(value));
     }
     const controller = new AbortController(); controllers.add(controller);
     const timer = setTimeout(() => controller.abort(),development.httpTimeoutMs ?? 30000);
-    const apiFailure = (code,message) => ({ok:false,error:{kind:'api',code,message}});
     try {
       const response = await target.fetch(url,{
-        method:p.method,signal:controller.signal,
-        headers:{'Accept':'application/json',...(Object.hasOwn(p,'data') ? {'Content-Type':'application/json'} : {})},
+        method:p.method,signal:controller.signal,redirect:'error',credentials:'omit',
+        headers:{'Accept':'application/json',...(Object.hasOwn(p,'data') ? {'Content-Type':'application/json'} : {}),
+          ...(token ? {Authorization:'Bearer '+token} : {})},
         ...(Object.hasOwn(p,'data') ? {body:JSON.stringify(p.data)} : {}),
       });
       // Stream and bound the body rather than buffering an unlimited response.
@@ -107,6 +124,7 @@ export function createBrowserTransport({appId, contract, development = {}, targe
           text += decoder.decode();
         } finally { reader.releaseLock(); }
       }
+      if (token && readToken() !== token) return apiFailure('unAuthorized','The browser session changed during this request.');
       if (!response.ok) return apiFailure([401,403].includes(response.status)?'unAuthorized':'HTTP_'+response.status,'Development API request failed.');
       let parsed;
       try { parsed=text ? JSON.parse(text) : null; }

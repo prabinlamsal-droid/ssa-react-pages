@@ -66,6 +66,17 @@ is read by Node only, not injected into the browser adapter. Endpoint mappings
 are browser-visible: never put secrets in their URLs. A mapping can instead use
 `{fixture: {data: [...]}}` for explicitly simulated API data.
 
+For browser-only authenticated development, an endpoint mapping can opt into
+`{ url: '/api/countries', bearerSessionKey: 'my-app:access-token' }`.
+The consuming app owns its login UI and writes only its access token to that
+`sessionStorage` key. ArcBridge reads it for each request and adds a bearer only
+to opted-in endpoints; missing tokens fail before fetching. Leave the login
+endpoint unmarked. Authenticated URLs require HTTPS (HTTP is allowed only on
+loopback), redirects are rejected, and cookies are omitted. Responses from a
+changed session are discarded. These mappings and the browser adapter are not
+included in mobile HTML; native authentication remains owned by Flutter. Browser
+storage is readable by same-origin scripts, so use development accounts.
+
 ## Commands
 
 Run from the consuming app directory, or supply `--root /path/to/app`:
