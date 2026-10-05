@@ -1,4 +1,5 @@
 import { SsaError, createSsaClient } from './client.js';
+import { browserHeaderDefaults, validateBrowserHeaderProfile } from './browser-header-profile.js';
 
 // Development-only module. The mobile build graph rejects this entire file.
 export function createBrowserTransport({appId, contract, development = {}, target = globalThis}) {
@@ -8,6 +9,30 @@ export function createBrowserTransport({appId, contract, development = {}, targe
   const controllers = new Set();
   const fail = (code, message) => { throw new SsaError(code, message); };
   const bytes = value => new TextEncoder().encode(JSON.stringify(value)).length;
+  let browserDeviceId;
+  function browserHeaders(profile) {
+    // Profiles contain public metadata only. Credentials remain in the separate
+    // per-endpoint bearer policy; arbitrary HTTP headers are not accepted.
+    try { validateBrowserHeaderProfile(profile); }
+    catch { fail('INVALID_ARGUMENT', 'Invalid browser header profile.'); }
+    if (!browserDeviceId) {
+      const key = 'arcbridge:' + appId + ':browser-device-id';
+      try { browserDeviceId = target.sessionStorage?.getItem(key); } catch { /* Storage may be disabled. */ }
+      if (typeof browserDeviceId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(browserDeviceId)) {
+        browserDeviceId = (target.crypto ?? globalThis.crypto).randomUUID();
+        try { target.sessionStorage?.setItem(key, browserDeviceId); } catch { /* Keep an in-memory identifier. */ }
+      }
+    }
+    const readable = value => String(value || 'Browser').replace(/[^\x20-\x7e]/g, '?').slice(0, 512);
+    const positive = (value, fallback) => Number.isFinite(value) && value > 0 ? value : fallback;
+    const density = positive(target.devicePixelRatio, 1);
+    return {
+      ...browserHeaderDefaults, ...profile, DeviceId: browserDeviceId,
+      DeviceName: readable(target.navigator?.platform), OsVersion: readable(target.navigator?.userAgent),
+      DeviceWidth: String(Math.round(positive(target.innerWidth, 0) * density)),
+      DeviceHeight: String(Math.round(positive(target.innerHeight, 0) * density)), ScreenDensity: String(density),
+    };
+  }
   function rule(key) {
     if (!Object.hasOwn(contract.shelf ?? {}, key)) fail('ACCESS_DENIED', 'Shelf key is not allowed.');
     return contract.shelf[key];
@@ -73,6 +98,7 @@ export function createBrowserTransport({appId, contract, development = {}, targe
     fields(p.pathParams??{},endpoint.pathFields,Object.keys(endpoint.pathFields??{}));
     if(Object.keys(p.queryParams??{}).length&&!['GET','POST'].includes(p.method))fail('INVALID_ARGUMENT','Query arguments are not supported for this method.');
     if(Object.hasOwn(p,'data')){if(p.method==='GET')fail('INVALID_ARGUMENT','GET cannot have a body.');fields(p.data,endpoint.bodyFields);}
+    const metadata = mapping.browserHeaders === undefined ? {} : browserHeaders(mapping.browserHeaders);
     // Explicit per-endpoint opt-in; never attach credentials to login/other URLs.
     const sessionKey = mapping.bearerSessionKey;
     if (sessionKey !== undefined && (typeof sessionKey !== 'string' || !sessionKey || sessionKey.length > 256)) {
@@ -106,7 +132,7 @@ export function createBrowserTransport({appId, contract, development = {}, targe
     try {
       const response = await target.fetch(url,{
         method:p.method,signal:controller.signal,redirect:'error',credentials:'omit',
-        headers:{'Accept':'application/json',...(Object.hasOwn(p,'data') ? {'Content-Type':'application/json'} : {}),
+        headers:{...metadata,'Accept':'application/json',...(Object.hasOwn(p,'data') ? {'Content-Type':'application/json'} : {}),
           ...(token ? {Authorization:'Bearer '+token} : {})},
         ...(Object.hasOwn(p,'data') ? {body:JSON.stringify(p.data)} : {}),
       });

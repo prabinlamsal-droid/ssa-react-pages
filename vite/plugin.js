@@ -2,9 +2,11 @@ import {realpathSync,readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {resolve,dirname,basename} from 'node:path';
 import {sealHtml,validateHtml} from './audit.js';
+import {resolveDevelopmentEndpoints} from '../cli/development.js';
 const adapter=fileURLToPath(new URL('../src/adapter.js',import.meta.url));
 const browser=fileURLToPath(new URL('../src/browser-entry.js',import.meta.url));
-const browserFiles=['browser.js','browser-entry.js'].map(p=>fileURLToPath(new URL('../src/'+p,import.meta.url)));
+const browserNames=['browser.js','browser-entry.js','browser-header-profile.js'];
+const browserFiles=browserNames.map(p=>fileURLToPath(new URL('../src/'+p,import.meta.url)));
 const canonical=id=>{try{return realpathSync(id.split('?')[0]);}catch{return id.split('?')[0];}};
 function packageModule(id, names) {
  const path=canonical(id);
@@ -13,6 +15,7 @@ function packageModule(id, names) {
 }
 export function arcBridge({target='mobile',appId,contract,development={},devPath,devOnly=[]}) {
  if (!['mobile','browser'].includes(target)) throw new Error('Unsupported adapter target.');
+ const endpoints=target==='browser'?resolveDevelopmentEndpoints(development):{};
  const denied=[...browserFiles,...devOnly,...(devPath?[devPath]:[])].map(canonical);
  return {
  name:'arcbridge:adapter-and-audit',enforce:'pre',
@@ -28,10 +31,10 @@ export function arcBridge({target='mobile',appId,contract,development={},devPath
    return null;
  },
  load(id) {
-   if(id==='\0arcbridge-browser-config')return 'export default '+JSON.stringify({appId,contract,development:{endpoints:development.endpoints ?? {},httpTimeoutMs:development.httpTimeoutMs}})+';';
+   if(id==='\0arcbridge-browser-config')return 'export default '+JSON.stringify({appId,contract,development:{endpoints,httpTimeoutMs:development.httpTimeoutMs}})+';';
  },
  transform(_code,id) {
-   if(target==='mobile' && (denied.includes(canonical(id)) || packageModule(id,['browser.js','browser-entry.js']))) this.error('Mobile build imports a development module: '+id);
+   if(target==='mobile' && (denied.includes(canonical(id)) || packageModule(id,browserNames))) this.error('Mobile build imports a development module: '+id);
  },
  };
 }

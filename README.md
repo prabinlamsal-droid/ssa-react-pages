@@ -77,7 +77,62 @@ changed session are discarded. These mappings and the browser adapter are not
 included in mobile HTML; native authentication remains owned by Flutter. Browser
 storage is readable by same-origin scripts, so use development accounts.
 
+An endpoint may also opt into SSA-style browser metadata with
+`browserHeaders: { AppVersionCode: '1', AppVersionName: '0.1.0' }`. Keep this public
+profile in the consuming app's development config (and list a separate profile
+file under `devOnly`). Supported overrides are `ApiVersion`, `AppVersionCode`,
+`AppVersionName`, `DeviceManufacturer`, `DeviceMarketName`, `DeviceModel`, and
+`BiometricType`; values must be printable ASCII strings, at most 256 characters.
+Defaults identify a browser rather than native hardware. ArcBridge supplies
+`DeviceName`, `OsVersion`, physical viewport `DeviceWidth`/`DeviceHeight`,
+`ScreenDensity`, and a random tab-session `DeviceId` at runtime. Endpoints without
+this opt-in receive no device metadata. No credentials/arbitrary headers are
+accepted through this profile; bearer configuration remains separate. The API's
+CORS policy must permit custom headers. Restart the dev server after config
+changes. Mobile builds never load the profile or browser implementation.
+
 ## Commands
+
+### Development server registry
+
+For multiple backends, group shared configuration by server rather than repeating
+full URLs and header settings on every endpoint:
+
+```js
+export default {
+  servers: {
+    kyc: {
+      baseUrl: 'https://kyc.example.test/api/v1/',
+      browserHeaders: { AppVersionName: '0.1.0' },
+      auth: { type: 'bearer', sessionKey: 'my-app:access-token' },
+    },
+    auth: { baseUrl: 'https://auth.example.test/api/v1/', auth: { type: 'none' } },
+  },
+  endpoints: {
+    kycCountry: { server: 'kyc', path: 'setting/country' },
+    login: { server: 'auth', path: 'SSA/loginSSAUser' },
+    publicSettings: { server: 'kyc', path: 'public/settings', hasAuthorization: false },
+  },
+};
+```
+
+The contract still defines allowed endpoint methods and parameters. At startup,
+the browser-target Vite plugin resolves each server reference into the existing
+flat endpoint format; React's HTTP API and bridge payload do not change. Unknown
+servers, escaping/absolute endpoint paths, credential-bearing base URLs and
+unsupported auth policies fail before the dev server starts. Root-relative proxy
+base URLs such as `/api/kyc/` are supported. Direct `{url: ...}` mappings and
+explicit fixtures remain compatible, but cannot be mixed into a server-based
+endpoint definition. Server auth supports `none` (default) and `bearer` with a
+sessionStorage key; an endpoint can disable inherited authorization, not override
+the server's URL, profile or credentials. Keep other secret auth schemes in a
+Node-side proxy, whose configuration is not serialized to the browser.
+
+This registry and resolver are development/build tooling only. Mobile builds do
+not resolve them or import their configuration. Native Flutter endpoint policies
+remain independent and authoritative. Add consumer registry files to `devOnly`.
+
+## CLI commands
 
 Run from the consuming app directory, or supply `--root /path/to/app`:
 
