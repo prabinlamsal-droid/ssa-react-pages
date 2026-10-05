@@ -156,6 +156,11 @@ A previous artifact from another app, or unlabelled legacy HTML, is refused.
 Review/migrate legacy content manually; the command does not overwrite it silently.
 Flutter must be rebuilt/reinstalled after copying. No Git operation is performed.
 
+Browser HTTP wraps successful top-level JSON arrays as `{ data: rows }`, matching
+native ApiService's list normalization. Object responses (including login and
+already-wrapped data) are unchanged. This is list-shape parity, not a complete
+emulation of every native response-processing or encryption rule.
+
 ## Application API
 
 ```js

@@ -113,6 +113,9 @@ export function createBrowserTransport({appId, contract, development = {}, targe
     const token = sessionKey === undefined ? null : readToken();
     if (sessionKey !== undefined && !token) return apiFailure('unAuthorized','Sign in to the browser development app first.');
     const success=data=>{
+      // Native ApiService wraps top-level lists before feature parsers see them.
+      // Leave objects (including login and existing data envelopes) untouched.
+      if (Array.isArray(data)) data = { data };
       const result={ok:true,data};if(bytes(result)>1048576)fail('PAYLOAD_TOO_LARGE','HTTP response exceeds its transfer limit.');return result;
     };
     if (Object.hasOwn(mapping,'fixture')) return success(structuredClone(mapping.fixture));
